@@ -32,6 +32,10 @@ func FindAudienceCharacteristics(audienceID int) []models.AudienceCharacteristic
 	return repositories.FindAudienceCharacteristics(audienceID)
 }
 
+func FindAllAssets() []models.Asset {
+	return repositories.FindAllAssets()
+}
+
 func FindAsset(assetID int) (models.Asset, error) {
 	return repositories.FindAsset(assetID)
 }

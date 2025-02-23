@@ -11,10 +11,15 @@ import (
 	"fmt"
 )
 
+func GetAssets(c *gin.Context) {
+    assets := services.GetAssets()
+    c.JSON(http.StatusOK, assets)
+}
+
 func GetUserFavorites(c *gin.Context) {
 	userId := getIntParamFromPath("userId", c)
-    assets := services.GetUserFavorites(userId)
-    c.JSON(http.StatusOK, assets)
+    userFavorites := services.GetUserFavorites(userId)
+    c.JSON(http.StatusOK, userFavorites)
 }
 
 func CreateUserFavorite(c *gin.Context) {

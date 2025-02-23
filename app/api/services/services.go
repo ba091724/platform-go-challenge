@@ -6,6 +6,7 @@ import (
 	"github.com/biter777/countries"
 
 	"app/api/payload"
+	"app/models"
 	"app/models/constants"
 	"app/repositories"
 	"app/services"
@@ -14,6 +15,24 @@ import (
 	"strings"
 )
 
+func GetAssets() []payload.AssetDetailsDto {
+	assets := services.FindAllAssets()
+	if len(assets) == 0 {
+		return make([]payload.AssetDetailsDto, 0)
+	}
+	response := make([]payload.AssetDetailsDto, 0, len(assets))
+	for _, a := range assets {
+		dto, err := getAssetDetails(a)
+		if err != nil {
+			fmt.Printf("[!] failed to get asset details for asset %s, skipping...\n", a.ID)
+			continue
+		} else { 
+			response = append(response, dto)
+		}
+	}
+	return response
+}
+
 func GetUserFavorites(userID int) []payload.UserFavoriteDto {
 	ufs := services.FindUserFavorites(userID)
 	if len(ufs) == 0 {
@@ -21,58 +40,54 @@ func GetUserFavorites(userID int) []payload.UserFavoriteDto {
 	}
 	response := make([]payload.UserFavoriteDto, 0, len(ufs))
 	for _, uf := range ufs {
-	SWITCH:
-		switch {
-		case uf.Asset.Type == constants.ASSET_TYPE_CHART:
-			dto, err := getChartAsset(uf.Asset.ID)
-			if err != nil {
-				fmt.Printf("[X] chart asset %d not found\n", uf.Asset.ID)
-				continue
-			}
-			assetDetailsDto := payload.UserFavoriteDto{
-				ID: uf.ID,
-				Details: payload.AssetDetailsDto{
-					Asset:        payload.AssetDto{ID: uf.Asset.ID},
-					ChartDetails: &dto,
-				},
-			}
-			response = append(response, assetDetailsDto)
-			break SWITCH
-		case uf.Asset.Type == constants.ASSET_TYPE_INSIGHT:
-			dto, err := getInsightAsset(uf.Asset.ID)
-			if err != nil {
-				fmt.Printf("[X] insight asset %d not found\n", uf.Asset.ID)
-				continue
-			}
-			assetDetailsDto := payload.UserFavoriteDto{
-				ID: uf.ID,
-				Details: payload.AssetDetailsDto{
-					Asset:          payload.AssetDto{ID: uf.Asset.ID},
-					InsightDetails: &dto,
-				},
-			}
-			response = append(response, assetDetailsDto)
-			break SWITCH
-		case uf.Asset.Type == constants.ASSET_TYPE_AUDIENCE:
-			dto, err := getAudienceAsset(uf.Asset.ID)
-			if err != nil {
-				fmt.Printf("[X] audience asset %d not found\n", uf.Asset.ID)
-				continue
-			}
-			assetDetailsDto := payload.UserFavoriteDto{
-				ID: uf.ID,
-				Details: payload.AssetDetailsDto{
-					Asset:           payload.AssetDto{ID: uf.Asset.ID},
-					AudienceDetails: &dto,
-				},
-			}
-			response = append(response, assetDetailsDto)
-			break SWITCH
-		default:
-			fmt.Println("mapping not implemented yet for asset ", uf.Asset.ID)
+		assetDto, err := getAssetDetails(*uf.Asset)
+		if err != nil {
+			fmt.Printf("[!] failed to get asset details for asset %s, skipping...\n", uf.Asset.ID)
+			continue
+		} else { 
+			responseDto := payload.UserFavoriteDto{ID: uf.ID, Details: assetDto}
+			response = append(response, responseDto)
 		}
 	}
 	return response
+}
+
+func getAssetDetails(asset models.Asset) (payload.AssetDetailsDto, error) {
+	switch asset.Type {
+	case constants.ASSET_TYPE_CHART:
+		dto, err := getChartAsset(asset.ID)
+		if err != nil {
+			fmt.Printf("[X] chart asset %d not found\n", asset.ID)
+			return payload.AssetDetailsDto{}, errors.New("chart asset not found")
+		}
+		return payload.AssetDetailsDto{
+			Asset:        payload.AssetDto{ID: asset.ID},
+			ChartDetails: &dto,
+		}, nil
+	case constants.ASSET_TYPE_INSIGHT:
+		dto, err := getInsightAsset(asset.ID)
+		if err != nil {
+			fmt.Printf("[X] insight asset %d not found\n", asset.ID)
+			return payload.AssetDetailsDto{}, errors.New("insight asset not found")
+		}
+		return payload.AssetDetailsDto{
+			Asset:          payload.AssetDto{ID: asset.ID},
+			InsightDetails: &dto,
+		}, nil
+	case constants.ASSET_TYPE_AUDIENCE:
+		dto, err := getAudienceAsset(asset.ID)
+		if err != nil {
+			fmt.Printf("[X] audience asset %d not found\n", asset.ID)
+			return payload.AssetDetailsDto{}, errors.New("audience asset not found")
+		}
+		return payload.AssetDetailsDto{
+			Asset:           payload.AssetDto{ID: asset.ID},
+			AudienceDetails: &dto,
+		}, nil
+	default:
+		fmt.Println("mapping not implemented yet for asset ", asset.ID)
+		return payload.AssetDetailsDto{}, errors.New("failed to map asset")
+	}
 }
 
 func CreateUserFavorite(userID int, assetID int) error {
@@ -126,13 +141,18 @@ func getAudienceAsset(assetID int) (payload.AudienceAssetDto, error) {
 	}
 	var characteristics []string
 	for _, ac := range repositories.FindAudienceCharacteristics(audience.ID) {
-		str := getCharacteristicStr(ac.CharacteristicID, ac.CharacteristicValue)
-		characteristics = append(characteristics, str)
+		str, err := getCharacteristicStr(ac.CharacteristicID, ac.CharacteristicValue)
+		if err != nil {
+			fmt.Printf("[!] something went wrong when resolving characteristic with id=%d, skipping...\n", ac.CharacteristicID)
+			continue
+		} else {
+			characteristics = append(characteristics, str)
+		}
 	}
 	return payload.AudienceAssetDto{Characteristics: characteristics}, nil
 }
 
-func getCharacteristicStr(characteristicID int, characteristicValue int) string {
+func getCharacteristicStr(characteristicID int, characteristicValue int) (string, error) {
 	var sb strings.Builder
 	if characteristicID == constants.CHARACTERISTIC_AGE_GROUP {
 		ageGroup := getAgeGroupText(characteristicValue)
@@ -158,9 +178,9 @@ func getCharacteristicStr(characteristicID int, characteristicValue int) string 
 		sb.WriteString(": ")
 		sb.WriteString(strconv.Itoa(characteristicValue))
 	} else {
-		//TODO default handling needed
+		return "", errors.New("unhandled characteristic id")
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func getGenderText(genderID int) string {
