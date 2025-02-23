@@ -1,0 +1,38 @@
+GET http://localhost:8080/assets
+Content-Type: application/json
+
+###
+
+PATCH http://localhost:8080/assets/:id
+Content-Type: application/json
+
+{
+    "description": "yada yada yada"
+}
+
+###
+
+GET http://localhost:8080/assets?userId=2
+Content-Type: application/json
+
+###
+
+GET http://localhost:8080/users/2/favorites
+Content-Type: application/json
+
+###
+
+POST http://localhost:8080/users/2/favorites
+Content-Type: application/json
+
+{
+    "assetId": 1
+}
+
+###
+
+DELETE http://localhost:8080/users/2/favorites/3
+Content-Type: application/json
+
+###
+
