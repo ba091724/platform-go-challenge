@@ -16,6 +16,22 @@ func GetAssets(c *gin.Context) {
     c.JSON(http.StatusOK, assets)
 }
 
+//TODO also check if user exists, because a user will be firing this request. or make compelling arguments about that being taken care of the security framework
+func UpdateAsset(c *gin.Context) {
+    assetId := getIntParamFromPath("assetId", c)
+    var json payload.AssetUpdateRequest
+    if err := c.BindJSON(&json); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    asset, err := services.UpdateAsset(assetId, json)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+    } else {
+        c.JSON(http.StatusOK, asset)
+    }
+}
+
 func GetUserFavorites(c *gin.Context) {
 	userId := getIntParamFromPath("userId", c)
     userFavorites := services.GetUserFavorites(userId)
@@ -40,7 +56,6 @@ func DeleteUserFavorite(c *gin.Context) {
 }
 
 func getIntParamFromPath(paramName string, c *gin.Context) int {
-    // paramValue, err := strconv.Atoi(c.Request.PathValue(paramName))
     paramValue, err := strconv.Atoi(c.Param(paramName))
     if err != nil {
         fmt.Printf("[X] Path param '%s' is mandatory\n", paramName)

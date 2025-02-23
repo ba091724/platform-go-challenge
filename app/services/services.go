@@ -28,10 +28,6 @@ func FindAudienceAsset(assetID int) (models.Audience, error) {
 	return repositories.FindAudienceAsset(assetID)
 }
 
-func FindAudienceCharacteristics(audienceID int) []models.AudienceCharacteristic {
-	return repositories.FindAudienceCharacteristics(audienceID)
-}
-
 func FindAllAssets() []models.Asset {
 	return repositories.FindAllAssets()
 }
@@ -40,13 +36,12 @@ func FindAsset(assetID int) (models.Asset, error) {
 	return repositories.FindAsset(assetID)
 }
 
-func AssetExists(assetID int) bool {
-	for _, a := range repositories.FindAllAssets() {
-		if a.ID == assetID {
-			return true
-		}
+func UpdateAsset(asset models.Asset) models.Asset {
+	asset, err := repositories.SaveAsset(asset)
+	if err != nil {
+		panic(fmt.Sprintf("failed to update asset %d: cannot find asset", asset.ID))
 	}
-	return false
+	return asset
 }
 
 // userFavoriteService

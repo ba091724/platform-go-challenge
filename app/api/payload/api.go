@@ -10,6 +10,10 @@ const (
 	GENDER_MALE                             = "male"
 )
 
+type AssetUpdateRequest struct {
+	Description string `json:"description" binding:"required"`
+}
+
 type UserFavoriteRequest struct {
 	AssetID int `json:"assetId" binding:"required"`
 }
@@ -20,7 +24,8 @@ type UserDto struct {
 }
 
 type AssetDto struct {
-	ID int `json:"id"`
+	ID          int    `json:"id"`
+	Description string `json:"description"`
 }
 
 type ChartAssetDto struct {

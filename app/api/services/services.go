@@ -1,8 +1,6 @@
 package services
 
 import (
-	"errors"
-
 	"github.com/biter777/countries"
 
 	"app/api/payload"
@@ -10,9 +8,11 @@ import (
 	"app/models/constants"
 	"app/repositories"
 	"app/services"
+
 	"fmt"
 	"strconv"
 	"strings"
+	"errors"
 )
 
 func GetAssets() []payload.AssetDetailsDto {
@@ -26,11 +26,22 @@ func GetAssets() []payload.AssetDetailsDto {
 		if err != nil {
 			fmt.Printf("[!] failed to get asset details for asset %s, skipping...\n", a.ID)
 			continue
-		} else { 
+		} else {
 			response = append(response, dto)
 		}
 	}
 	return response
+}
+
+func UpdateAsset(assetID int, updateRequest payload.AssetUpdateRequest) (payload.AssetDetailsDto, error) {
+	asset, err := services.FindAsset(assetID)
+	if err != nil {
+		//TODO return and handle bad request error (400)
+		return payload.AssetDetailsDto{}, err
+	}
+	asset.Description = updateRequest.Description
+	asset = services.UpdateAsset(asset)
+	return getAssetDetails(asset)
 }
 
 func GetUserFavorites(userID int) []payload.UserFavoriteDto {
@@ -44,7 +55,7 @@ func GetUserFavorites(userID int) []payload.UserFavoriteDto {
 		if err != nil {
 			fmt.Printf("[!] failed to get asset details for asset %s, skipping...\n", uf.Asset.ID)
 			continue
-		} else { 
+		} else {
 			responseDto := payload.UserFavoriteDto{ID: uf.ID, Details: assetDto}
 			response = append(response, responseDto)
 		}
@@ -61,7 +72,7 @@ func getAssetDetails(asset models.Asset) (payload.AssetDetailsDto, error) {
 			return payload.AssetDetailsDto{}, errors.New("chart asset not found")
 		}
 		return payload.AssetDetailsDto{
-			Asset:        payload.AssetDto{ID: asset.ID},
+			Asset:        payload.AssetDto{ID: asset.ID, Description: asset.Description},
 			ChartDetails: &dto,
 		}, nil
 	case constants.ASSET_TYPE_INSIGHT:
@@ -71,7 +82,7 @@ func getAssetDetails(asset models.Asset) (payload.AssetDetailsDto, error) {
 			return payload.AssetDetailsDto{}, errors.New("insight asset not found")
 		}
 		return payload.AssetDetailsDto{
-			Asset:          payload.AssetDto{ID: asset.ID},
+			Asset:          payload.AssetDto{ID: asset.ID, Description: asset.Description},
 			InsightDetails: &dto,
 		}, nil
 	case constants.ASSET_TYPE_AUDIENCE:
@@ -81,7 +92,7 @@ func getAssetDetails(asset models.Asset) (payload.AssetDetailsDto, error) {
 			return payload.AssetDetailsDto{}, errors.New("audience asset not found")
 		}
 		return payload.AssetDetailsDto{
-			Asset:           payload.AssetDto{ID: asset.ID},
+			Asset:           payload.AssetDto{ID: asset.ID, Description: asset.Description},
 			AudienceDetails: &dto,
 		}, nil
 	default:
@@ -96,7 +107,7 @@ func CreateUserFavorite(userID int, assetID int) error {
 		fmt.Printf("user %d not found", userID)
 		return err
 	}
-	if !services.AssetExists(assetID) {
+	if _, err := services.FindAsset(assetID); err != nil {
 		fmt.Printf("[X] asset %d does not exist\n", assetID)
 		return errors.New("unknown asset")
 	}

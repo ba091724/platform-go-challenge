@@ -37,8 +37,6 @@ type User struct {
 
 type UserFavorite struct {
 	ID int
-	// UserID  int
-	// AssetID int
 	User  *User
 	Asset *Asset
 }

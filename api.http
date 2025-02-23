@@ -3,17 +3,12 @@ Content-Type: application/json
 
 ###
 
-PATCH http://localhost:8080/assets/:id
+PATCH http://localhost:8080/assets/1
 Content-Type: application/json
 
 {
-    "description": "yada yada yada"
+    "description": "yada yada yada yada yada"
 }
-
-###
-
-GET http://localhost:8080/assets?userId=2
-Content-Type: application/json
 
 ###
 

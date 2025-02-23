@@ -3,6 +3,7 @@ package repositories
 import (
 	"app/models"
 	"app/models/constants"
+
 	"errors"
 	"fmt"
 	"slices"
@@ -141,4 +142,23 @@ func FindAsset(assetID int) (models.Asset, error) {
 		}
 	}
 	return models.Asset{}, errors.New("asset not found")
+}
+
+func SaveAsset(asset models.Asset) (models.Asset, error) {
+	index := findAssetIndex(asset.ID)
+	if index == -1 {
+		return models.Asset{}, errors.New("asset not found")
+	}
+	assets[index] = asset
+	return assets[index], nil
+}
+
+// when adding a database this will be removed
+func findAssetIndex(assetID int) int {
+	for index, a := range assets {
+		if a.ID == assetID {
+			return index
+		}
+	}
+	return -1
 }
