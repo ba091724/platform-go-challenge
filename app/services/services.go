@@ -1,10 +1,10 @@
 package services
 
 import (
+	"app/api/payload"
 	"app/models"
 	"app/repositories"
 
-	"errors"
 	"fmt"
 )
 
@@ -45,27 +45,27 @@ func UpdateAsset(asset models.Asset) models.Asset {
 }
 
 // userFavoriteService
-func CreateFavoriteAsset(assetID int, userID int) error {
+func CreateFavoriteAsset(assetID int, userID int) payload.ErrHttp {
 	user, err := FindUser(userID)
 	if err != nil {
 		fmt.Printf("user %d not found", userID)
-		return err
+		return payload.ErrNotFound.WithMessage("user not found")
 	}
 	userFavorites := repositories.FindUserFavorites(userID)
 
 	for _, uf := range userFavorites {
 		if uf.Asset.ID == assetID {
-			fmt.Printf("[X] asset %d is already a favorite for user %d\n", assetID, userID)
-			return errors.New("already a user favorite asset")
+			errorMessage := fmt.Sprintf("asset %d is already a favorite for user %d", assetID, userID)
+			return payload.ErrConflict.WithMessage(errorMessage)
 		}
 	}
 	asset, err := FindAsset(assetID)
 	if err != nil {
 		fmt.Printf("asset %d not found", assetID)
-		return err
+		return payload.ErrNotFound.WithMessage("asset not found")
 	}
 	repositories.CreateUserFavorite(user, asset)
-	return nil
+	return payload.ErrOK
 }
 
 func DeleteUserFavorite(userFavoriteID int) error {

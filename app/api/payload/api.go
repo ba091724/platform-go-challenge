@@ -1,5 +1,7 @@
 package payload
 
+import "errors"
+
 const (
 	CHARACTERISTIC_AGE_GROUP                = "age group"
 	CHARACTERISTIC_BIRTH_COUNTRY            = "birth country"
@@ -53,3 +55,28 @@ type UserFavoriteDto struct {
 	ID      int             `json:"id"`
 	Details AssetDetailsDto `json:"details"`
 }
+
+/* error */
+type ErrHttp struct {
+	Code    int
+	Message string
+	Err     error
+}
+
+func (e ErrHttp) Error() string {
+	return e.Message
+}
+
+func (e ErrHttp) Unwrap() error {
+	return e.Err
+}
+
+func (e *ErrHttp) WithMessage(message string) ErrHttp {
+	e.Message = message
+	return *e
+}
+
+var ErrOK = ErrHttp{Code: 200, Err: nil}
+var ErrBadRequest = ErrHttp{Code: 400, Err: errors.New("bad request")}
+var ErrNotFound = ErrHttp{Code: 404, Err: errors.New("not found")}
+var ErrConflict = ErrHttp{Code: 409, Err: errors.New("conflict")}

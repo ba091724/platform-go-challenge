@@ -101,18 +101,17 @@ func getAssetDetails(asset models.Asset) (payload.AssetDetailsDto, error) {
 	}
 }
 
-func CreateUserFavorite(userID int, assetID int) error {
+func CreateUserFavorite(userID int, assetID int) payload.ErrHttp {
 	_, err := services.FindUser(userID)
 	if err != nil {
-		fmt.Printf("user %d not found", userID)
-		return err
+		fmt.Printf("[X] user %d not found", userID)
+		return payload.ErrNotFound.WithMessage("user not found")
 	}
 	if _, err := services.FindAsset(assetID); err != nil {
 		fmt.Printf("[X] asset %d does not exist\n", assetID)
-		return errors.New("unknown asset")
+		return payload.ErrNotFound.WithMessage("unknown asset")
 	}
-	services.CreateFavoriteAsset(assetID, userID)
-	return nil
+	return services.CreateFavoriteAsset(assetID, userID)
 }
 
 func DeleteUserFavorite(userID int, userFavoriteID int) error {

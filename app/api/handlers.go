@@ -1,14 +1,16 @@
 package api
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 
+	"app/api/payload"
 	"app/api/services"
-    "app/api/payload"
 
+	"fmt"
 	"net/http"
 	"strconv"
-	"fmt"
 )
 
 func GetAssets(c *gin.Context) {
@@ -24,6 +26,7 @@ func UpdateAsset(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
+    //TODO custom error handling
     asset, err := services.UpdateAsset(assetId, json)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -45,8 +48,11 @@ func CreateUserFavorite(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
-    fmt.Println(json)
-    services.CreateUserFavorite(userId, json.AssetID)
+    err := services.CreateUserFavorite(userId, json.AssetID)
+    if err.Err != nil {
+        httpErrorCode := getErrorCode(err)
+        c.JSON(httpErrorCode, gin.H{"error": err.Error()})
+    }
 }
 
 func DeleteUserFavorite(c *gin.Context) {
@@ -62,4 +68,17 @@ func getIntParamFromPath(paramName string, c *gin.Context) int {
 		panic(err)
 	}
     return paramValue
+}
+
+func getErrorCode(err payload.ErrHttp) int {
+    if errors.Is(err, payload.ErrBadRequest) {
+        return http.StatusBadRequest
+    }
+    if errors.Is(err, payload.ErrNotFound) {
+        return http.StatusNotFound
+    }
+    if errors.Is(err, payload.ErrConflict) {
+        return http.StatusConflict
+    }
+    return http.StatusInternalServerError
 }

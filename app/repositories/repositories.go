@@ -4,7 +4,6 @@ import (
 	"app/models"
 	"app/models/constants"
 
-	"errors"
 	"fmt"
 	"slices"
 )
@@ -14,6 +13,7 @@ var a2 = models.Asset{ID: 2, Description: "chart-2", Type: constants.ASSET_TYPE_
 var a3 = models.Asset{ID: 3, Description: "insight-1", Type: constants.ASSET_TYPE_INSIGHT}
 var a4 = models.Asset{ID: 4, Description: "audience-1", Type: constants.ASSET_TYPE_AUDIENCE}
 var a5 = models.Asset{ID: 5, Description: "audience-2", Type: constants.ASSET_TYPE_AUDIENCE}
+
 // table assets
 var assets = []models.Asset{a1, a2, a3, a4, a5}
 
@@ -28,6 +28,7 @@ var insights = []models.Insight{{Asset: a3, Text: "some nice insight"}}
 
 var aud1 = models.Audience{Asset: a4, ID: 1}
 var aud2 = models.Audience{Asset: a5, ID: 2}
+
 // table audiences
 var audiences = []models.Audience{aud1, aud2}
 
@@ -40,7 +41,7 @@ var audienceCharacteristics = []models.AudienceCharacteristic{ac1, ac2, ac3, ac4
 
 var john = models.User{ID: 1, Name: "John Doe"}
 var leroy = models.User{ID: 2, Name: "Leroy Jenkins"}
-var users = []models.User {john, leroy}
+var users = []models.User{john, leroy}
 
 // table userFavorites
 var userFavorites = []models.UserFavorite{
@@ -51,6 +52,18 @@ var userFavorites = []models.UserFavorite{
 	{ID: 4, User: &leroy, Asset: &a5},
 }
 
+/* errors */
+
+type ErrNotFound struct {
+	ID   int
+	Type string
+}
+
+func (e ErrNotFound) Error() string {
+	fmt.Printf("[!] '%s' not found, id=%d\n", e.Type, e.ID)
+	return fmt.Sprintf("%s not found", e.Type)
+}
+
 /* service methods */
 
 func FindUser(userID int) (user models.User, Err error) {
@@ -59,7 +72,7 @@ func FindUser(userID int) (user models.User, Err error) {
 			return u, nil
 		}
 	}
-	return models.User{}, errors.New("user not found")
+	return models.User{}, ErrNotFound{ID: userID, Type: "user"}
 }
 
 // userFavoriteRepository
@@ -87,10 +100,9 @@ func DeleteUserFavorite(userFavoriteID int) error {
 		}
 	}
 	if index < 0 {
-		fmt.Printf("user favorite %d not found for deletion\n", userFavoriteID)
-		return errors.New("user favorite not found for deletion")
+		return ErrNotFound{ID: userFavoriteID, Type: "user favorite"}
 	}
-	userFavorites = slices.Delete(userFavorites, index, index + 1)
+	userFavorites = slices.Delete(userFavorites, index, index+1)
 	return nil
 }
 
@@ -100,7 +112,7 @@ func FindChartAsset(assetID int) (models.Chart, error) {
 			return c, nil
 		}
 	}
-	return models.Chart{}, errors.New("chart not found")
+	return models.Chart{}, ErrNotFound{ID: assetID, Type: "chart asset"}
 }
 
 func FindInsightAsset(assetID int) (models.Insight, error) {
@@ -109,7 +121,7 @@ func FindInsightAsset(assetID int) (models.Insight, error) {
 			return i, nil
 		}
 	}
-	return models.Insight{}, errors.New("insight not found")
+	return models.Insight{}, ErrNotFound{ID: assetID, Type: "insight asset"}
 }
 
 func FindAudienceAsset(assetID int) (models.Audience, error) {
@@ -118,10 +130,10 @@ func FindAudienceAsset(assetID int) (models.Audience, error) {
 			return a, nil
 		}
 	}
-	return models.Audience{}, errors.New("audience not found")
+	return models.Audience{}, ErrNotFound{ID: assetID, Type: "audience asset"}
 }
 
-func FindAudienceCharacteristics(audienceID int) ([]models.AudienceCharacteristic) {
+func FindAudienceCharacteristics(audienceID int) []models.AudienceCharacteristic {
 	acs := make([]models.AudienceCharacteristic, 0)
 	for _, ac := range audienceCharacteristics {
 		if ac.AudienceID == audienceID {
@@ -132,7 +144,7 @@ func FindAudienceCharacteristics(audienceID int) ([]models.AudienceCharacteristi
 }
 
 func FindAllAssets() []models.Asset {
-	return assets;
+	return assets
 }
 
 func FindAsset(assetID int) (models.Asset, error) {
@@ -141,13 +153,13 @@ func FindAsset(assetID int) (models.Asset, error) {
 			return a, nil
 		}
 	}
-	return models.Asset{}, errors.New("asset not found")
+	return models.Asset{}, ErrNotFound{ID: assetID, Type: "asset"}
 }
 
 func SaveAsset(asset models.Asset) (models.Asset, error) {
 	index := findAssetIndex(asset.ID)
 	if index == -1 {
-		return models.Asset{}, errors.New("asset not found")
+		return models.Asset{}, ErrNotFound{ID: asset.ID, Type: "asset"}
 	}
 	assets[index] = asset
 	return assets[index], nil
