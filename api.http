@@ -21,7 +21,7 @@ POST http://localhost:8080/users/2/favorites
 Content-Type: application/json
 
 {
-    "assetId": 1
+    "assetId": 3
 }
 
 ###

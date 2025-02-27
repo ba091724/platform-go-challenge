@@ -4,7 +4,8 @@ import (
 	"app/models"
 	"app/models/constants"
 
-	"fmt"
+	// "fmt"
+	"errors"
 	"slices"
 )
 
@@ -54,15 +55,15 @@ var userFavorites = []models.UserFavorite{
 
 /* errors */
 
-type ErrNotFound struct {
-	ID   int
-	Type string
-}
+// type ErrNotFound struct {
+// 	ID   int
+// 	Type string
+// }
 
-func (e ErrNotFound) Error() string {
-	fmt.Printf("[!] '%s' not found, id=%d\n", e.Type, e.ID)
-	return fmt.Sprintf("%s not found", e.Type)
-}
+// func (e ErrNotFound) Error() string {
+// 	fmt.Printf("[!] '%s' not found, id=%d\n", e.Type, e.ID)
+// 	return fmt.Sprintf("%s not found", e.Type)
+// }
 
 /* service methods */
 
@@ -72,7 +73,7 @@ func FindUser(userID int) (user models.User, Err error) {
 			return u, nil
 		}
 	}
-	return models.User{}, ErrNotFound{ID: userID, Type: "user"}
+	return models.User{}, errors.New("user not found")
 }
 
 // userFavoriteRepository
@@ -100,7 +101,7 @@ func DeleteUserFavorite(userFavoriteID int) error {
 		}
 	}
 	if index < 0 {
-		return ErrNotFound{ID: userFavoriteID, Type: "user favorite"}
+		return errors.New("user favorite")
 	}
 	userFavorites = slices.Delete(userFavorites, index, index+1)
 	return nil
@@ -112,7 +113,7 @@ func FindChartAsset(assetID int) (models.Chart, error) {
 			return c, nil
 		}
 	}
-	return models.Chart{}, ErrNotFound{ID: assetID, Type: "chart asset"}
+	return models.Chart{}, errors.New("chart asset not found")
 }
 
 func FindInsightAsset(assetID int) (models.Insight, error) {
@@ -121,7 +122,7 @@ func FindInsightAsset(assetID int) (models.Insight, error) {
 			return i, nil
 		}
 	}
-	return models.Insight{}, ErrNotFound{ID: assetID, Type: "insight asset"}
+	return models.Insight{}, errors.New("insight asset not found")
 }
 
 func FindAudienceAsset(assetID int) (models.Audience, error) {
@@ -130,7 +131,7 @@ func FindAudienceAsset(assetID int) (models.Audience, error) {
 			return a, nil
 		}
 	}
-	return models.Audience{}, ErrNotFound{ID: assetID, Type: "audience asset"}
+	return models.Audience{}, errors.New("audience asset not found")
 }
 
 func FindAudienceCharacteristics(audienceID int) []models.AudienceCharacteristic {
@@ -153,13 +154,13 @@ func FindAsset(assetID int) (models.Asset, error) {
 			return a, nil
 		}
 	}
-	return models.Asset{}, ErrNotFound{ID: assetID, Type: "asset"}
+	return models.Asset{}, errors.New("asset not found")
 }
 
 func SaveAsset(asset models.Asset) (models.Asset, error) {
 	index := findAssetIndex(asset.ID)
 	if index == -1 {
-		return models.Asset{}, ErrNotFound{ID: asset.ID, Type: "asset"}
+		return models.Asset{}, errors.New("asset not found")
 	}
 	assets[index] = asset
 	return assets[index], nil

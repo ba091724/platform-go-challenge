@@ -1,30 +1,33 @@
 package services
 
 import (
+	"net/http"
+
 	"github.com/biter777/countries"
 
-	"app/api/payload"
+	"app/api/schema"
 	"app/models"
 	"app/models/constants"
 	"app/repositories"
 	"app/services"
 
+	"errors"
 	"fmt"
+	// "http"
 	"strconv"
 	"strings"
-	"errors"
 )
 
-func GetAssets() []payload.AssetDetailsDto {
+func GetAssets() []schema.AssetDetailsDto {
 	assets := services.FindAllAssets()
 	if len(assets) == 0 {
-		return make([]payload.AssetDetailsDto, 0)
+		return make([]schema.AssetDetailsDto, 0)
 	}
-	response := make([]payload.AssetDetailsDto, 0, len(assets))
+	response := make([]schema.AssetDetailsDto, 0, len(assets))
 	for _, a := range assets {
 		dto, err := getAssetDetails(a)
 		if err != nil {
-			fmt.Printf("[!] failed to get asset details for asset %s, skipping...\n", a.ID)
+			fmt.Printf("[!] failed to get asset details for asset %d, skipping...\n", a.ID)
 			continue
 		} else {
 			response = append(response, dto)
@@ -33,121 +36,127 @@ func GetAssets() []payload.AssetDetailsDto {
 	return response
 }
 
-func UpdateAsset(assetID int, updateRequest payload.AssetUpdateRequest) (payload.AssetDetailsDto, error) {
+func UpdateAsset(assetID int, updateRequest schema.AssetUpdateRequest) (schema.AssetDetailsDto, error) {
 	asset, err := services.FindAsset(assetID)
 	if err != nil {
 		//TODO return and handle bad request error (400)
-		return payload.AssetDetailsDto{}, err
+		return schema.AssetDetailsDto{}, err
 	}
 	asset.Description = updateRequest.Description
 	asset = services.UpdateAsset(asset)
 	return getAssetDetails(asset)
 }
 
-func GetUserFavorites(userID int) []payload.UserFavoriteDto {
+func GetUserFavorites(userID int) []schema.UserFavoriteDto {
 	ufs := services.FindUserFavorites(userID)
 	if len(ufs) == 0 {
-		return make([]payload.UserFavoriteDto, 0)
+		return make([]schema.UserFavoriteDto, 0)
 	}
-	response := make([]payload.UserFavoriteDto, 0, len(ufs))
+	response := make([]schema.UserFavoriteDto, 0, len(ufs))
 	for _, uf := range ufs {
 		assetDto, err := getAssetDetails(*uf.Asset)
 		if err != nil {
 			fmt.Printf("[!] failed to get asset details for asset %s, skipping...\n", uf.Asset.ID)
 			continue
 		} else {
-			responseDto := payload.UserFavoriteDto{ID: uf.ID, Details: assetDto}
+			responseDto := schema.UserFavoriteDto{ID: uf.ID, Details: assetDto}
 			response = append(response, responseDto)
 		}
 	}
 	return response
 }
 
-func getAssetDetails(asset models.Asset) (payload.AssetDetailsDto, error) {
+func getAssetDetails(asset models.Asset) (schema.AssetDetailsDto, error) {
 	switch asset.Type {
 	case constants.ASSET_TYPE_CHART:
 		dto, err := getChartAsset(asset.ID)
 		if err != nil {
 			fmt.Printf("[X] chart asset %d not found\n", asset.ID)
-			return payload.AssetDetailsDto{}, errors.New("chart asset not found")
+			return schema.AssetDetailsDto{}, schema.NewApiError(http.StatusNotFound, err)
 		}
-		return payload.AssetDetailsDto{
-			Asset:        payload.AssetDto{ID: asset.ID, Description: asset.Description},
+		return schema.AssetDetailsDto{
+			Asset:        schema.AssetDto{ID: asset.ID, Description: asset.Description},
 			ChartDetails: &dto,
 		}, nil
 	case constants.ASSET_TYPE_INSIGHT:
 		dto, err := getInsightAsset(asset.ID)
 		if err != nil {
 			fmt.Printf("[X] insight asset %d not found\n", asset.ID)
-			return payload.AssetDetailsDto{}, errors.New("insight asset not found")
+			return schema.AssetDetailsDto{}, schema.NewApiError(http.StatusNotFound, err)
 		}
-		return payload.AssetDetailsDto{
-			Asset:          payload.AssetDto{ID: asset.ID, Description: asset.Description},
+		return schema.AssetDetailsDto{
+			Asset:          schema.AssetDto{ID: asset.ID, Description: asset.Description},
 			InsightDetails: &dto,
 		}, nil
 	case constants.ASSET_TYPE_AUDIENCE:
 		dto, err := getAudienceAsset(asset.ID)
 		if err != nil {
 			fmt.Printf("[X] audience asset %d not found\n", asset.ID)
-			return payload.AssetDetailsDto{}, errors.New("audience asset not found")
+			return schema.AssetDetailsDto{}, schema.NewApiError(http.StatusNotFound, err)
 		}
-		return payload.AssetDetailsDto{
-			Asset:           payload.AssetDto{ID: asset.ID, Description: asset.Description},
+		return schema.AssetDetailsDto{
+			Asset:           schema.AssetDto{ID: asset.ID, Description: asset.Description},
 			AudienceDetails: &dto,
 		}, nil
 	default:
-		fmt.Println("mapping not implemented yet for asset ", asset.ID)
-		return payload.AssetDetailsDto{}, errors.New("failed to map asset")
+		//TODO error log
+		fmt.Println("[X] mapping not implemented yet for asset ", asset.ID)
+		return schema.AssetDetailsDto{}, schema.NewApiError(http.StatusInternalServerError, nil)
 	}
 }
 
-func CreateUserFavorite(userID int, assetID int) payload.ErrHttp {
+func CreateUserFavorite(userID int, assetID int) error {
 	_, err := services.FindUser(userID)
 	if err != nil {
 		fmt.Printf("[X] user %d not found", userID)
-		return payload.ErrNotFound.WithMessage("user not found")
+		return schema.NewApiError(http.StatusNotFound, err)
 	}
 	if _, err := services.FindAsset(assetID); err != nil {
 		fmt.Printf("[X] asset %d does not exist\n", assetID)
-		return payload.ErrNotFound.WithMessage("unknown asset")
+		return schema.NewApiError(http.StatusNotFound, err)
 	}
-	return services.CreateFavoriteAsset(assetID, userID)
+	if err := services.CreateFavoriteAsset(assetID, userID); err != nil {
+		// not good because might be a conflict as well
+		// maybe customize those errors?
+		return schema.NewApiError(http.StatusBadRequest, err)
+	}
+	return nil
 }
 
 func DeleteUserFavorite(userID int, userFavoriteID int) error {
 	_, err := services.FindUser(userID)
 	if err != nil {
 		fmt.Printf("user %d not found", userID)
-		return err
+		return schema.NewApiError(http.StatusNotFound, err)
 	}
 	return services.DeleteUserFavorite(userFavoriteID)
 }
 
-func getChartAsset(assetID int) (payload.ChartAssetDto, error) {
+func getChartAsset(assetID int) (schema.ChartAssetDto, error) {
 	a, err := services.FindChartAsset(assetID)
 	if err != nil {
-		return payload.ChartAssetDto{}, err
+		return schema.ChartAssetDto{}, schema.NewApiError(http.StatusNotFound, err)
 	}
-	return payload.ChartAssetDto{
+	return schema.ChartAssetDto{
 		Title:      a.Title,
 		AxesTitles: a.AxesTitles,
 		PlotData:   a.PlotData,
 	}, nil
 }
 
-func getInsightAsset(assetID int) (payload.InsightAssetDto, error) {
+func getInsightAsset(assetID int) (schema.InsightAssetDto, error) {
 	a, err := services.FindInsightAsset(assetID)
 	if err != nil {
-		return payload.InsightAssetDto{}, err
+		return schema.InsightAssetDto{}, schema.NewApiError(http.StatusNotFound, err)
 	}
-	return payload.InsightAssetDto{Text: a.Text}, nil
+	return schema.InsightAssetDto{Text: a.Text}, nil
 }
 
 // this could be placed in a mapping method, or mapped on an entity property (?)
-func getAudienceAsset(assetID int) (payload.AudienceAssetDto, error) {
+func getAudienceAsset(assetID int) (schema.AudienceAssetDto, error) {
 	audience, err := services.FindAudienceAsset(assetID)
 	if err != nil {
-		return payload.AudienceAssetDto{}, err
+		return schema.AudienceAssetDto{}, schema.NewApiError(http.StatusNotFound, err)
 	}
 	var characteristics []string
 	for _, ac := range repositories.FindAudienceCharacteristics(audience.ID) {
@@ -159,32 +168,32 @@ func getAudienceAsset(assetID int) (payload.AudienceAssetDto, error) {
 			characteristics = append(characteristics, str)
 		}
 	}
-	return payload.AudienceAssetDto{Characteristics: characteristics}, nil
+	return schema.AudienceAssetDto{Characteristics: characteristics}, nil
 }
 
 func getCharacteristicStr(characteristicID int, characteristicValue int) (string, error) {
 	var sb strings.Builder
 	if characteristicID == constants.CHARACTERISTIC_AGE_GROUP {
 		ageGroup := getAgeGroupText(characteristicValue)
-		sb.WriteString(payload.CHARACTERISTIC_AGE_GROUP)
+		sb.WriteString(schema.CHARACTERISTIC_AGE_GROUP)
 		sb.WriteString(": ")
 		sb.WriteString(ageGroup)
 	} else if characteristicID == constants.CHARACTERISTIC_BIRTH_COUNTRY {
 		country := countries.ByNumeric(characteristicValue).Info().Name
-		sb.WriteString(payload.CHARACTERISTIC_BIRTH_COUNTRY)
+		sb.WriteString(schema.CHARACTERISTIC_BIRTH_COUNTRY)
 		sb.WriteString(": ")
 		sb.WriteString(country)
 	} else if characteristicID == constants.CHARACTERISTIC_GENDER {
 		gender := getGenderText(characteristicValue)
-		sb.WriteString(payload.CHARACTERISTIC_GENDER)
+		sb.WriteString(schema.CHARACTERISTIC_GENDER)
 		sb.WriteString(": ")
 		sb.WriteString(gender)
 	} else if characteristicID == constants.CHARACTERISTIC_PURCHASES_LAST_MONTH {
-		sb.WriteString(payload.CHARACTERISTIC_PURCHASES_LAST_MONTH)
+		sb.WriteString(schema.CHARACTERISTIC_PURCHASES_LAST_MONTH)
 		sb.WriteString(": ")
 		sb.WriteString(strconv.Itoa(characteristicValue))
 	} else if characteristicID == constants.CHARACTERISTIC_SOCIAL_MEDIA_DAILY_HOURS {
-		sb.WriteString(payload.CHARACTERISTIC_SOCIAL_MEDIA_DAILY_HOURS)
+		sb.WriteString(schema.CHARACTERISTIC_SOCIAL_MEDIA_DAILY_HOURS)
 		sb.WriteString(": ")
 		sb.WriteString(strconv.Itoa(characteristicValue))
 	} else {
@@ -195,9 +204,9 @@ func getCharacteristicStr(characteristicID int, characteristicValue int) (string
 
 func getGenderText(genderID int) string {
 	if genderID == 1 {
-		return payload.GENDER_FEMALE
+		return schema.GENDER_FEMALE
 	}
-	return payload.GENDER_MALE
+	return schema.GENDER_MALE
 }
 
 func getAgeGroupText(ageGroupID int) string {

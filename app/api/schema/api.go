@@ -1,6 +1,10 @@
-package payload
+package schema
 
-import "errors"
+// import "errors"
+import (
+	// "reflect"
+	// "fmt"
+)
 
 const (
 	CHARACTERISTIC_AGE_GROUP                = "age group"
@@ -57,26 +61,34 @@ type UserFavoriteDto struct {
 }
 
 /* error */
-type ErrHttp struct {
-	Code    int
-	Message string
-	Err     error
+type HttpError interface {
+	Error() string
+	Status() int
 }
 
-func (e ErrHttp) Error() string {
-	return e.Message
+type ApiError struct {
+	Code   int   `json:"code"`
+	Reason error `json:"reason"`
 }
 
-func (e ErrHttp) Unwrap() error {
-	return e.Err
+func NewApiError(code int, reason error) error {
+	return &ApiError{
+		Code:   code,
+		Reason: reason,
+	}
 }
 
-func (e *ErrHttp) WithMessage(message string) ErrHttp {
-	e.Message = message
-	return *e
+func (e *ApiError) Error() string {
+	if e.Reason == nil {
+		return "something went wrong"
+	}
+	return e.Reason.Error()
 }
 
-var ErrOK = ErrHttp{Code: 200, Err: nil}
-var ErrBadRequest = ErrHttp{Code: 400, Err: errors.New("bad request")}
-var ErrNotFound = ErrHttp{Code: 404, Err: errors.New("not found")}
-var ErrConflict = ErrHttp{Code: 409, Err: errors.New("conflict")}
+func (e *ApiError) Status() int {
+	return e.Code
+}
+
+type ValidationError struct {
+	Key string
+}
