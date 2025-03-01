@@ -1,177 +1,189 @@
 package repositories
 
 import (
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"app/api/schema"
+	"app/configs"
 	"app/models"
 	"app/models/constants"
 
-	// "fmt"
+	"fmt"
+	"net/http"
 	"errors"
-	"slices"
+	"context"
+	"log"
 )
 
-var a1 = models.Asset{ID: 1, Description: "chart-1", Type: constants.ASSET_TYPE_CHART}
-var a2 = models.Asset{ID: 2, Description: "chart-2", Type: constants.ASSET_TYPE_CHART}
-var a3 = models.Asset{ID: 3, Description: "insight-1", Type: constants.ASSET_TYPE_INSIGHT}
-var a4 = models.Asset{ID: 4, Description: "audience-1", Type: constants.ASSET_TYPE_AUDIENCE}
-var a5 = models.Asset{ID: 5, Description: "audience-2", Type: constants.ASSET_TYPE_AUDIENCE}
+/* collections */
 
-// table assets
-var assets = []models.Asset{a1, a2, a3, a4, a5}
-
-// table charts
-var charts = []models.Chart{
-	{Asset: a1, Title: "chart-1-title", AxesTitles: "chart-1-AxesTitles", PlotData: "chart-1-PlotData"},
-	{Asset: a2, Title: "chart-2-title", AxesTitles: "chart-2-AxesTitles", PlotData: "chart-2-PlotData"},
-}
-
-// table insights
-var insights = []models.Insight{{Asset: a3, Text: "some nice insight"}}
-
-var aud1 = models.Audience{Asset: a4, ID: 1}
-var aud2 = models.Audience{Asset: a5, ID: 2}
-
-// table audiences
-var audiences = []models.Audience{aud1, aud2}
-
-var ac1 = models.AudienceCharacteristic{ID: 1, AudienceID: 1, CharacteristicID: 1, CharacteristicValue: 1}
-var ac2 = models.AudienceCharacteristic{ID: 2, AudienceID: 2, CharacteristicID: 1, CharacteristicValue: 2}
-var ac3 = models.AudienceCharacteristic{ID: 3, AudienceID: 2, CharacteristicID: 2, CharacteristicValue: 300}
-var ac4 = models.AudienceCharacteristic{ID: 4, AudienceID: 2, CharacteristicID: 4, CharacteristicValue: 4}
-var ac5 = models.AudienceCharacteristic{ID: 5, AudienceID: 2, CharacteristicID: 5, CharacteristicValue: 4200}
-var audienceCharacteristics = []models.AudienceCharacteristic{ac1, ac2, ac3, ac4, ac5}
-
-var john = models.User{ID: 1, Name: "John Doe"}
-var leroy = models.User{ID: 2, Name: "Leroy Jenkins"}
-var users = []models.User{john, leroy}
-
-// table userFavorites
-var userFavorites = []models.UserFavorite{
-	// passing references because in the database only the IDs are supposed to be saved
-	{ID: 1, User: &john, Asset: &a1},
-	{ID: 2, User: &john, Asset: &a3},
-	{ID: 3, User: &leroy, Asset: &a2},
-	{ID: 4, User: &leroy, Asset: &a5},
-}
-
-/* errors */
-
-// type ErrNotFound struct {
-// 	ID   int
-// 	Type string
-// }
-
-// func (e ErrNotFound) Error() string {
-// 	fmt.Printf("[!] '%s' not found, id=%d\n", e.Type, e.ID)
-// 	return fmt.Sprintf("%s not found", e.Type)
-// }
+var assetsCollection *mongo.Collection = configs.GetCollection(configs.DB, "assets")
+var audienceCharacteristicsCollection *mongo.Collection = configs.GetCollection(configs.DB, "audienceCharacteristics")
+var userFavoritesCollection *mongo.Collection = configs.GetCollection(configs.DB, "userFavorites")
+var userCollection *mongo.Collection = configs.GetCollection(configs.DB, "users")
 
 /* service methods */
 
-func FindUser(userID int) (user models.User, Err error) {
-	for _, u := range users {
-		if u.ID == userID {
-			return u, nil
-		}
+func FindUser(userID string) (user models.User, Err error) {
+	userId, errx := primitive.ObjectIDFromHex(userID)
+	if errx != nil {
+		return models.User{}, schema.NewApiError(http.StatusNotFound, errors.New("user not found"))
 	}
-	return models.User{}, errors.New("user not found")
+	var result models.User
+	err := userCollection.FindOne(
+		context.TODO(),
+		bson.D{{"_id", userId}},
+	).Decode(&result)
+	if err != nil {
+		// ErrNoDocuments means that the filter did not match any documents in
+		// the collection.
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return models.User{}, err
+		}
+		log.Panic(err)
+	}
+	return result, nil
 }
 
-// userFavoriteRepository
-func FindUserFavorites(userID int) []models.UserFavorite {
-	userFavoriteAssets := make([]models.UserFavorite, 0)
-	for _, uf := range userFavorites {
-		if uf.User.ID == userID {
-			userFavoriteAssets = append(userFavoriteAssets, uf)
-		}
+func FindUserFavorites(userID string) []models.UserFavorite {
+	cursor, err := userFavoritesCollection.Find(context.TODO(), bson.D{{"userId", userID}})
+	if err != nil {
+		log.Panic(err)
 	}
-	return userFavoriteAssets
+	var results []models.UserFavorite
+	if err = cursor.All(context.TODO(), &results); err != nil {
+		log.Panic(err)
+	}
+	return results
 }
 
-func CreateUserFavorite(user models.User, asset models.Asset) {
-	nextID := len(userFavorites) + 1
-	userFavorites = append(userFavorites, models.UserFavorite{ID: nextID, User: &user, Asset: &asset})
+func CreateUserFavorite(userID string, assetID string) string {
+	res, err := userFavoritesCollection.InsertOne(context.TODO(), models.UserFavorite{UserID: userID, AssetID: assetID})
+	if err != nil {
+		log.Panicf("failed to insert new user favorite {userId=%s, assetId=%s}\n", userID, assetID)
+	}
+	return fmt.Sprintf("%s", res.InsertedID)
 }
 
-func DeleteUserFavorite(userFavoriteID int) error {
-	index := -1
-	for i, uf := range userFavorites {
-		if uf.ID == userFavoriteID {
-			index = i
-			break
-		}
+func DeleteUserFavorite(userFavoriteID string) error {
+	userFavoriteId, errx := primitive.ObjectIDFromHex(userFavoriteID)
+	if errx != nil {
+		return schema.NewApiError(http.StatusNotFound, errors.New("user favorite not found"))
 	}
-	if index < 0 {
-		return errors.New("user favorite")
+	res, err := userFavoritesCollection.DeleteOne(context.TODO(), bson.M{"_id": userFavoriteId})
+	if err != nil {
+		return schema.NewApiError(http.StatusInternalServerError, err)
 	}
-	userFavorites = slices.Delete(userFavorites, index, index+1)
+	if res.DeletedCount == 0 {
+		return schema.NewApiError(http.StatusNotFound, errors.New("user favorite not found"))
+	}
 	return nil
 }
 
-func FindChartAsset(assetID int) (models.Chart, error) {
-	for _, c := range charts {
-		if c.ID == assetID {
-			return c, nil
+func FindAsset(assetID string) (models.AssetVO, error) {
+	assetId, errx := primitive.ObjectIDFromHex(assetID)
+	if errx != nil {
+		return models.AssetVO{}, errx
+	}
+	var result bson.M
+	err := assetsCollection.FindOne(
+		context.TODO(),
+		bson.D{{"_id", assetId}},
+	).Decode(&result)
+	if err != nil {
+		// ErrNoDocuments means that the filter did not match any documents in
+		// the collection.
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return models.AssetVO{}, err
 		}
+		log.Panic(err)
 	}
-	return models.Chart{}, errors.New("chart asset not found")
+	return getAssetVo(result), nil //TODO not good, must return error
 }
 
-func FindInsightAsset(assetID int) (models.Insight, error) {
-	for _, i := range insights {
-		if i.ID == assetID {
-			return i, nil
+func FindAssets(filter schema.AssetFilter) []models.AssetVO {
+	bsonFilter := getBsonFilter(filter)
+	cursor, err := assetsCollection.Find(context.TODO(), bsonFilter)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	var results []bson.M
+	if err = cursor.All(context.TODO(), &results); err != nil {
+		log.Panic(err)
+	}
+	var assetVos []models.AssetVO = make([]models.AssetVO, len(results))
+	for _, r := range results {
+		assetVos = append(assetVos, getAssetVo(r))
+	}
+	return assetVos
+}
+
+func UpdateAsset(request models.AssetUpdateRequest) error {
+	assetId, errx := primitive.ObjectIDFromHex(request.AssetID)
+	if errx != nil {
+		return schema.NewApiError(http.StatusNotFound, errors.New("asset not found"))
+	}
+	opts := options.FindOneAndUpdate().SetUpsert(true)
+	filter := bson.D{{"_id", assetId}}
+	update := bson.D{{"$set", bson.D{{"description", request.Description}}}}
+	var updatedAsset models.Asset
+	err := assetsCollection.FindOneAndUpdate(
+		context.TODO(),
+		filter,
+		update,
+		opts,
+	).Decode(&updatedAsset)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return schema.NewApiError(http.StatusNotFound, errors.New("asset not found"))
 		}
+		log.Print(err)
+		return schema.NewApiError(http.StatusInternalServerError, err)
 	}
-	return models.Insight{}, errors.New("insight asset not found")
+	return nil
 }
 
-func FindAudienceAsset(assetID int) (models.Audience, error) {
-	for _, a := range audiences {
-		if a.Asset.ID == assetID {
-			return a, nil
-		}
+func getBsonFilter(filter schema.AssetFilter) bson.D {
+	// not a good way because I have to cover all the property combinations of filter arg
+	if filter.AssetID != "" {
+		return bson.D{{"assetId", filter.AssetID}}
 	}
-	return models.Audience{}, errors.New("audience asset not found")
+	return bson.D{{}}
 }
 
-func FindAudienceCharacteristics(audienceID int) []models.AudienceCharacteristic {
-	acs := make([]models.AudienceCharacteristic, 0)
-	for _, ac := range audienceCharacteristics {
-		if ac.AudienceID == audienceID {
-			acs = append(acs, ac)
-		}
+func getAssetVo(raw bson.M) models.AssetVO {
+	assetType := int(raw["type"].(int32))
+	assetId := raw["_id"].(primitive.ObjectID).Hex()
+	description := raw["description"].(string)
+	if assetType == constants.ASSET_TYPE_CHART {
+		title := raw["description"].(string)
+		axesTitles := raw["axesTitles"].(string)
+		plotData := raw["plotData"].(string)
+		return models.NewChartAsset(assetId, description, title, axesTitles, plotData)
 	}
-	return acs
+	if assetType == constants.ASSET_TYPE_INSIGHT {
+		text := raw["text"].(string)
+		return models.NewInsightAsset(assetId, description, text)
+	}
+	if assetType == constants.ASSET_TYPE_AUDIENCE {
+		audienceCharacteristics := findAudienceCharacteristics(assetId)
+		return models.NewAudienceAsset(assetId, description, audienceCharacteristics)
+	}
+	panic(fmt.Sprintf("failed to map raw bson '%s' to AssetVO, unknown asset type\n", raw))
 }
 
-func FindAllAssets() []models.Asset {
-	return assets
-}
-
-func FindAsset(assetID int) (models.Asset, error) {
-	for _, a := range assets {
-		if a.ID == assetID {
-			return a, nil
-		}
+func findAudienceCharacteristics(assetID string) []models.AudienceCharacteristic {
+	cursor, err := audienceCharacteristicsCollection.Find(context.TODO(), bson.D{{"assetId", assetID}})
+	if err != nil {
+		log.Panic(err)
 	}
-	return models.Asset{}, errors.New("asset not found")
-}
-
-func SaveAsset(asset models.Asset) (models.Asset, error) {
-	index := findAssetIndex(asset.ID)
-	if index == -1 {
-		return models.Asset{}, errors.New("asset not found")
+	var results []models.AudienceCharacteristic
+	if err = cursor.All(context.TODO(), &results); err != nil {
+		log.Panic(err)
 	}
-	assets[index] = asset
-	return assets[index], nil
-}
-
-// when adding a database this will be removed
-func findAssetIndex(assetID int) int {
-	for index, a := range assets {
-		if a.ID == assetID {
-			return index
-		}
-	}
-	return -1
+	return results
 }

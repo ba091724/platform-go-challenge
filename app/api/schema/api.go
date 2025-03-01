@@ -1,10 +1,10 @@
 package schema
 
 // import "errors"
-import (
-	// "reflect"
-	// "fmt"
-)
+// import "github.com/xdg-go/stringprep"
+
+// "reflect"
+// "fmt"
 
 const (
 	CHARACTERISTIC_AGE_GROUP                = "age group"
@@ -21,16 +21,16 @@ type AssetUpdateRequest struct {
 }
 
 type UserFavoriteRequest struct {
-	AssetID int `json:"assetId" binding:"required"`
+	AssetID string `json:"assetId" binding:"required"`
 }
 
 type UserDto struct {
-	ID       int    `json:"id"`
+	ID       string `json:"id"`
 	Username string `json:"username"`
 }
 
 type AssetDto struct {
-	ID          int    `json:"id"`
+	ID          string `json:"id"`
 	Description string `json:"description"`
 }
 
@@ -56,7 +56,7 @@ type AssetDetailsDto struct {
 }
 
 type UserFavoriteDto struct {
-	ID      int             `json:"id"`
+	ID      string          `json:"id"`
 	Details AssetDetailsDto `json:"details"`
 }
 
@@ -91,4 +91,10 @@ func (e *ApiError) Status() int {
 
 type ValidationError struct {
 	Key string
+}
+
+/* internal */
+
+type AssetFilter struct {
+	AssetID string
 }
