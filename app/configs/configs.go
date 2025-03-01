@@ -12,7 +12,8 @@ import (
 
 func ConnectDB() *mongo.Client {
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://godbuser:godbpass@localhost:27017/?authSource=godb"))
+	//TODO get from env params
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://godbuser:godbpass@db:27017/?authSource=godb"))
 	if err != nil {
 		log.Fatal(err)
 	}
