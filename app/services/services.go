@@ -3,13 +3,10 @@ package services
 import (
 	"github.com/biter777/countries"
 
-	// "app/api/schema"
 	"app/api/schema"
 	"app/models"
 	"app/models/constants"
 	"app/repositories"
-
-	// "app/repositories"
 
 	"errors"
 	"fmt"
