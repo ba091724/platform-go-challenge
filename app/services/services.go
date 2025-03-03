@@ -9,21 +9,41 @@ import (
 	"app/models/constants"
 	"app/repositories"
 
+	// "app/repositories"
+
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
-	"net/http"
 )
 
-func FindAssets(filter schema.AssetFilter) []schema.AssetDetailsDto {
-	assets := repositories.FindAssets(filter)
+
+type GService interface {
+	FindAssets(filter schema.AssetFilter) []schema.AssetDetailsDto
+	FindAsset(assetID string) (schema.AssetDetailsDto, error)
+	UpdateAsset(assetID string, description string) error
+	FindUser(userID string) (models.User, error)
+	FindUserFavorites(userID string) []models.UserFavorite
+	CreateFavoriteAsset(assetID string, userID string) (string, error)
+	DeleteUserFavorite(userFavoriteID string) error
+}
+
+type EntityService struct {
+	Repo repositories.GRepository
+}
+
+func NewGService(repo repositories.GRepository) GService {
+	return &EntityService{Repo: repo}
+}
+
+func (s *EntityService) FindAssets(filter schema.AssetFilter) []schema.AssetDetailsDto {
+	assets := s.Repo.FindAssets(filter)
 	if len(assets) == 0 {
 		return make([]schema.AssetDetailsDto, 0)
 	}
 	response := make([]schema.AssetDetailsDto, 0, len(assets))
 	for _, a := range assets {
-		fmt.Println(a)
 		dto, err := getAssetDetailsDto(a)
 		if err != nil {
 			fmt.Printf("[!] failed to get asset details for asset %s due to error {%s}, skipping...\n", a, err.Error())
@@ -35,8 +55,8 @@ func FindAssets(filter schema.AssetFilter) []schema.AssetDetailsDto {
 	return response
 }
 
-func FindAsset(assetID string) (schema.AssetDetailsDto, error) {
-	assetVo, err := repositories.FindAsset(assetID)
+func (s *EntityService) FindAsset(assetID string) (schema.AssetDetailsDto, error) {
+	assetVo, err := s.Repo.FindAsset(assetID)
 	if err != nil {
 		return schema.AssetDetailsDto{}, err
 	}
@@ -46,26 +66,26 @@ func FindAsset(assetID string) (schema.AssetDetailsDto, error) {
 	return getAssetDetailsDto(assetVo)
 }
 
-func UpdateAsset(assetID string, description string) error {
+func (s *EntityService) UpdateAsset(assetID string, description string) error {
 	request := models.AssetUpdateRequest{AssetID: assetID, Description: description}
-	return repositories.UpdateAsset(request)
+	return s.Repo.UpdateAsset(request)
 }
 
-func FindUser(userID string) (models.User, error) {
-	return repositories.FindUser(userID)
+func (s *EntityService) FindUser(userID string) (models.User, error) {
+	return s.Repo.FindUser(userID)
 }
 
-func FindUserFavorites(userID string) []models.UserFavorite {
-	return repositories.FindUserFavorites(userID)
+func (s *EntityService) FindUserFavorites(userID string) []models.UserFavorite {
+	return s.Repo.FindUserFavorites(userID)
 }
 
-func CreateFavoriteAsset(assetID string, userID string) (string, error) {
-	user, err := FindUser(userID)
+func (s *EntityService) CreateFavoriteAsset(assetID string, userID string) (string, error) {
+	user, err := s.FindUser(userID)
 	if err != nil {
 		fmt.Printf("user %s not found\n", userID)
 		return "", schema.NewApiError(http.StatusNotFound, errors.Join(err, errors.New("user not found")))
 	}
-	userFavorites := repositories.FindUserFavorites(userID)
+	userFavorites := s.Repo.FindUserFavorites(userID)
 
 	for _, uf := range userFavorites {
 		if uf.AssetID == assetID {
@@ -73,16 +93,16 @@ func CreateFavoriteAsset(assetID string, userID string) (string, error) {
 			return "", schema.NewApiError(http.StatusConflict, errors.New(errorMessage))
 		}
 	}
-	asset, err := FindAsset(assetID)
+	asset, err := s.FindAsset(assetID)
 	if err != nil {
 		fmt.Printf("asset %s not found", assetID)
 		return "", schema.NewApiError(http.StatusNotFound, errors.New("asset not found"))
 	}
-	return repositories.CreateUserFavorite(user.ID.Hex(), asset.Asset.ID), nil
+	return s.Repo.CreateUserFavorite(user.ID.Hex(), asset.Asset.ID), nil
 }
 
-func DeleteUserFavorite(userFavoriteID string) error {
-	return repositories.DeleteUserFavorite(userFavoriteID)
+func (s *EntityService) DeleteUserFavorite(userFavoriteID string) error {
+	return s.Repo.DeleteUserFavorite(userFavoriteID)
 }
 
 func getAssetDetailsDto(vo models.AssetVO) (schema.AssetDetailsDto, error) {

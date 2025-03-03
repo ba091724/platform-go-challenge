@@ -9,31 +9,47 @@ import (
 	"log"
 )
 
-
-func GetAssets(filter schema.AssetFilter) []schema.AssetDetailsDto {
-	return services.FindAssets(filter)
+type XService interface {
+	GetAssets(filter schema.AssetFilter) []schema.AssetDetailsDto
+	getAsset(id string) (schema.AssetDetailsDto, error)
+	UpdateAsset(assetID string, updateRequest schema.AssetUpdateRequest) error
+	GetUserFavorites(userID string) []schema.UserFavoriteDto
+	CreateUserFavorite(userID string, assetID string) (string, error)
+	DeleteUserFavorite(userID string, userFavoriteID string) error
 }
 
-func getAsset(id string) (schema.AssetDetailsDto, error) {
-	dto, err := services.FindAsset(id)
+type ApiService struct {
+	Svc services.GService
+}
+
+func NewXService(svc services.GService) XService {
+	return &ApiService{Svc: svc}
+}
+
+func (a *ApiService) GetAssets(filter schema.AssetFilter) []schema.AssetDetailsDto {
+	return a.Svc.FindAssets(filter)
+}
+
+func (a *ApiService) getAsset(id string) (schema.AssetDetailsDto, error) {
+	dto, err := a.Svc.FindAsset(id)
 	if err != nil {
 		return schema.AssetDetailsDto{}, schema.NewApiError(http.StatusNotFound, err)
 	}
 	return dto, nil
 }
 
-func UpdateAsset(assetID string, updateRequest schema.AssetUpdateRequest) error {
-	return services.UpdateAsset(assetID, updateRequest.Description)
+func (a *ApiService) UpdateAsset(assetID string, updateRequest schema.AssetUpdateRequest) error {
+	return a.Svc.UpdateAsset(assetID, updateRequest.Description)
 }
 
-func GetUserFavorites(userID string) []schema.UserFavoriteDto {
-	ufs := services.FindUserFavorites(userID)
+func (a *ApiService) GetUserFavorites(userID string) []schema.UserFavoriteDto {
+	ufs := a.Svc.FindUserFavorites(userID)
 	if len(ufs) == 0 {
 		return make([]schema.UserFavoriteDto, 0)
 	}
 	userFavoriteDtos := make([]schema.UserFavoriteDto, 0, len(ufs))
 	for _, uf := range ufs {
-		assetDto, err := getAsset(uf.AssetID)
+		assetDto, err := a.getAsset(uf.AssetID)
 		if err != nil {
 			log.Printf("[!] failed to get asset details for asset %s, skipping...\n", uf.AssetID)
 			continue
@@ -45,28 +61,28 @@ func GetUserFavorites(userID string) []schema.UserFavoriteDto {
 	return userFavoriteDtos
 }
 
-func CreateUserFavorite(userID string, assetID string) (string, error) {
-	_, err := services.FindUser(userID)
+func (a *ApiService) CreateUserFavorite(userID string, assetID string) (string, error) {
+	_, err := a.Svc.FindUser(userID)
 	if err != nil {
 		fmt.Printf("[X] user %s not found\n", userID)
 		return "", schema.NewApiError(http.StatusNotFound, err)
 	}
-	if _, err := services.FindAsset(assetID); err != nil {
+	if _, err := a.Svc.FindAsset(assetID); err != nil {
 		fmt.Printf("[X] asset %s does not exist\n", assetID)
 		return "", schema.NewApiError(http.StatusNotFound, err)
 	}
-	id, err := services.CreateFavoriteAsset(assetID, userID)
+	id, err := a.Svc.CreateFavoriteAsset(assetID, userID)
 	if err != nil {
 		return "", err
 	}
 	return id, nil
 }
 
-func DeleteUserFavorite(userID string, userFavoriteID string) error {
-	_, err := services.FindUser(userID)
+func (a *ApiService) DeleteUserFavorite(userID string, userFavoriteID string) error {
+	_, err := a.Svc.FindUser(userID)
 	if err != nil {
 		fmt.Printf("user %s not found", userID)
 		return schema.NewApiError(http.StatusNotFound, err)
 	}
-	return services.DeleteUserFavorite(userFavoriteID)
+	return a.Svc.DeleteUserFavorite(userFavoriteID)
 }

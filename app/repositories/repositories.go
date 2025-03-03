@@ -7,33 +7,57 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"app/api/schema"
-	"app/configs"
 	"app/models"
 	"app/models/constants"
 
-	"fmt"
-	"net/http"
-	"errors"
 	"context"
+	"errors"
+	"fmt"
 	"log"
+	"net/http"
 )
 
-/* collections */
+type GRepository interface {
+	FindUser(userID string) (user models.User, Err error)
+	FindUserFavorites(userID string) []models.UserFavorite
+	CreateUserFavorite(userID string, assetID string) string
+	DeleteUserFavorite(userFavoriteID string) error
+	FindAsset(assetID string) (models.AssetVO, error)
+	FindAssets(filter schema.AssetFilter) []models.AssetVO
+	UpdateAsset(request models.AssetUpdateRequest) error
+	GetAssetVo(raw bson.M) models.AssetVO
+	FindAudienceCharacteristics(assetID string) []models.AudienceCharacteristic
+}
 
-var assetsCollection *mongo.Collection = configs.GetCollection(configs.DB, "assets")
-var audienceCharacteristicsCollection *mongo.Collection = configs.GetCollection(configs.DB, "audienceCharacteristics")
-var userFavoritesCollection *mongo.Collection = configs.GetCollection(configs.DB, "userFavorites")
-var userCollection *mongo.Collection = configs.GetCollection(configs.DB, "users")
+type MongoRepository struct {
+	client                  *mongo.Client
+	assets                  *mongo.Collection
+	audienceCharacteristics *mongo.Collection
+	userFavorites           *mongo.Collection
+	users                   *mongo.Collection
+}
+
+var _ GRepository = &MongoRepository{} // tell me why?
+
+func NewMongoRepository(client *mongo.Client, dbName string) (GRepository, error) {
+	return &MongoRepository{
+		client: client,
+		assets: client.Database(dbName).Collection("assets"),
+		audienceCharacteristics: client.Database(dbName).Collection("audienceCharacteristics"),
+		userFavorites: client.Database(dbName).Collection("userFavorites"),
+		users: client.Database(dbName).Collection("users"),
+	}, nil
+}
 
 /* service methods */
 
-func FindUser(userID string) (user models.User, Err error) {
+func (r *MongoRepository) FindUser(userID string) (user models.User, Err error) {
 	userId, errx := primitive.ObjectIDFromHex(userID)
 	if errx != nil {
 		return models.User{}, schema.NewApiError(http.StatusNotFound, errors.New("user not found"))
 	}
 	var result models.User
-	err := userCollection.FindOne(
+	err := r.users.FindOne(
 		context.TODO(),
 		bson.D{{"_id", userId}},
 	).Decode(&result)
@@ -48,8 +72,8 @@ func FindUser(userID string) (user models.User, Err error) {
 	return result, nil
 }
 
-func FindUserFavorites(userID string) []models.UserFavorite {
-	cursor, err := userFavoritesCollection.Find(context.TODO(), bson.D{{"userId", userID}})
+func (r *MongoRepository) FindUserFavorites(userID string) []models.UserFavorite {
+	cursor, err := r.userFavorites.Find(context.TODO(), bson.D{{"userId", userID}})
 	if err != nil {
 		log.Panic(err)
 	}
@@ -60,20 +84,20 @@ func FindUserFavorites(userID string) []models.UserFavorite {
 	return results
 }
 
-func CreateUserFavorite(userID string, assetID string) string {
-	res, err := userFavoritesCollection.InsertOne(context.TODO(), models.UserFavorite{UserID: userID, AssetID: assetID})
+func (r *MongoRepository) CreateUserFavorite(userID string, assetID string) string {
+	res, err := r.userFavorites.InsertOne(context.TODO(), models.UserFavorite{UserID: userID, AssetID: assetID})
 	if err != nil {
 		log.Panicf("failed to insert new user favorite {userId=%s, assetId=%s}\n", userID, assetID)
 	}
 	return fmt.Sprintf("%s", res.InsertedID)
 }
 
-func DeleteUserFavorite(userFavoriteID string) error {
+func (repo *MongoRepository) DeleteUserFavorite(userFavoriteID string) error {
 	userFavoriteId, errx := primitive.ObjectIDFromHex(userFavoriteID)
 	if errx != nil {
 		return schema.NewApiError(http.StatusNotFound, errors.New("user favorite not found"))
 	}
-	res, err := userFavoritesCollection.DeleteOne(context.TODO(), bson.M{"_id": userFavoriteId})
+	res, err := repo.userFavorites.DeleteOne(context.TODO(), bson.M{"_id": userFavoriteId})
 	if err != nil {
 		return schema.NewApiError(http.StatusInternalServerError, err)
 	}
@@ -83,13 +107,13 @@ func DeleteUserFavorite(userFavoriteID string) error {
 	return nil
 }
 
-func FindAsset(assetID string) (models.AssetVO, error) {
+func (r *MongoRepository) FindAsset(assetID string) (models.AssetVO, error) {
 	assetId, errx := primitive.ObjectIDFromHex(assetID)
 	if errx != nil {
 		return models.AssetVO{}, errx
 	}
 	var result bson.M
-	err := assetsCollection.FindOne(
+	err := r.assets.FindOne(
 		context.TODO(),
 		bson.D{{"_id", assetId}},
 	).Decode(&result)
@@ -101,12 +125,12 @@ func FindAsset(assetID string) (models.AssetVO, error) {
 		}
 		log.Panic(err)
 	}
-	return getAssetVo(result), nil //TODO not good, must return error
+	return r.GetAssetVo(result), nil //TODO not good, must return error
 }
 
-func FindAssets(filter schema.AssetFilter) []models.AssetVO {
+func (r *MongoRepository) FindAssets(filter schema.AssetFilter) []models.AssetVO {
 	bsonFilter := getBsonFilter(filter)
-	cursor, err := assetsCollection.Find(context.TODO(), bsonFilter)
+	cursor, err := r.assets.Find(context.TODO(), bsonFilter)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -116,13 +140,13 @@ func FindAssets(filter schema.AssetFilter) []models.AssetVO {
 		log.Panic(err)
 	}
 	var assetVos []models.AssetVO = make([]models.AssetVO, len(results))
-	for _, r := range results {
-		assetVos = append(assetVos, getAssetVo(r))
+	for _, res := range results {
+		assetVos = append(assetVos, r.GetAssetVo(res))
 	}
 	return assetVos
 }
 
-func UpdateAsset(request models.AssetUpdateRequest) error {
+func (r *MongoRepository) UpdateAsset(request models.AssetUpdateRequest) error {
 	assetId, errx := primitive.ObjectIDFromHex(request.AssetID)
 	if errx != nil {
 		return schema.NewApiError(http.StatusNotFound, errors.New("asset not found"))
@@ -131,7 +155,7 @@ func UpdateAsset(request models.AssetUpdateRequest) error {
 	filter := bson.D{{"_id", assetId}}
 	update := bson.D{{"$set", bson.D{{"description", request.Description}}}}
 	var updatedAsset models.Asset
-	err := assetsCollection.FindOneAndUpdate(
+	err := r.assets.FindOneAndUpdate(
 		context.TODO(),
 		filter,
 		update,
@@ -147,15 +171,7 @@ func UpdateAsset(request models.AssetUpdateRequest) error {
 	return nil
 }
 
-func getBsonFilter(filter schema.AssetFilter) bson.D {
-	// not a good way because I have to cover all the property combinations of filter arg
-	if filter.AssetID != "" {
-		return bson.D{{"assetId", filter.AssetID}}
-	}
-	return bson.D{{}}
-}
-
-func getAssetVo(raw bson.M) models.AssetVO {
+func (r *MongoRepository) GetAssetVo(raw bson.M) models.AssetVO {
 	assetType := int(raw["type"].(int32))
 	assetId := raw["_id"].(primitive.ObjectID).Hex()
 	description := raw["description"].(string)
@@ -170,14 +186,14 @@ func getAssetVo(raw bson.M) models.AssetVO {
 		return models.NewInsightAsset(assetId, description, text)
 	}
 	if assetType == constants.ASSET_TYPE_AUDIENCE {
-		audienceCharacteristics := findAudienceCharacteristics(assetId)
+		audienceCharacteristics := r.FindAudienceCharacteristics(assetId)
 		return models.NewAudienceAsset(assetId, description, audienceCharacteristics)
 	}
 	panic(fmt.Sprintf("failed to map raw bson '%s' to AssetVO, unknown asset type\n", raw))
 }
 
-func findAudienceCharacteristics(assetID string) []models.AudienceCharacteristic {
-	cursor, err := audienceCharacteristicsCollection.Find(context.TODO(), bson.D{{"assetId", assetID}})
+func (r *MongoRepository) FindAudienceCharacteristics(assetID string) []models.AudienceCharacteristic {
+	cursor, err := r.audienceCharacteristics.Find(context.TODO(), bson.D{{"assetId", assetID}})
 	if err != nil {
 		log.Panic(err)
 	}
@@ -186,4 +202,12 @@ func findAudienceCharacteristics(assetID string) []models.AudienceCharacteristic
 		log.Panic(err)
 	}
 	return results
+}
+
+func getBsonFilter(filter schema.AssetFilter) bson.D {
+	// not a good way because I have to cover all the property combinations of filter arg
+	if filter.AssetID != "" {
+		return bson.D{{"assetId", filter.AssetID}}
+	}
+	return bson.D{{}}
 }

@@ -10,26 +10,28 @@ import (
 	"time"
 )
 
-func ConnectDB() *mongo.Client {
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+type Configs struct {
+	DbClient *mongo.Client
+	DbName   string
+}
+
+func NewConfigs() *Configs {
 	//TODO get from env params
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://godbuser:godbpass@db:27017/?authSource=godb"))
+	dbName := "godb"
+	dbUser := "godbuser"
+	dbPass := "godbpass"
+	dbHost := "db"
+	dbPort := "27017"
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(fmt.Sprintf("mongodb://%s:%s@%s:%s/?authSource=%s", dbUser, dbPass, dbHost, dbPort, dbName)))
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	//ping the database
 	err = client.Ping(ctx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("Connected to MongoDB")
-	return client
-}
-
-var DB *mongo.Client = ConnectDB()
-
-func GetCollection(client *mongo.Client, collectionName string) *mongo.Collection {
-	collection := client.Database("godb").Collection(collectionName)
-	return collection
+	return &Configs{DbClient: client, DbName: dbName}
 }
